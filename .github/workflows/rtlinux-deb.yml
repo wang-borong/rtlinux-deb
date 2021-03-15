@@ -1,0 +1,118 @@
+name: Build rtlinux for ubuntu 20.04
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/rtlinux-deb.yml', 'configs/popos.config' ]
+  schedule:
+    - cron: 0 21 * * *
+  watch:
+    types: started
+
+env:
+  TZ: Asia/Shanghai
+
+
+# Action will return to the startup working directory every run
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    if: github.event.repository.owner.id == github.event.sender.id
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Initialization environment
+        run: |
+          sudo apt-get remove aria2 ansible shellcheck rpm xorriso zsync \
+          clang-6.0 lldb-6.0 lld-6.0 clang-format-6.0 clang-8 lldb-8 lld-8 clang-format-8 \
+          clang-9 lldb-9 lld-9 clangd-9 clang-format-9 \
+          esl-erlang gfortran-8 gfortran-9 \
+          cabal-install-2.0 cabal-install-2.2 \
+          cabal-install-2.4 cabal-install-3.0 cabal-install-3.2 heroku imagemagick \
+          libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
+          mercurial apt-transport-https mono-complete mysql-client libmysqlclient-dev \
+          mysql-server mssql-tools unixodbc-dev yarn bazel chrpath libssl-dev libxft-dev \
+          libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
+          php-zmq snmp pollinate libpq-dev postgresql-client ruby-full \
+          sphinxsearch subversion mongodb-org -yq >/dev/null 2>&1 \
+          || echo "failed main apt-get remove"
+
+          echo "Removing large packages"
+          sudo apt-get remove -y '^ghc-8.*'
+          sudo apt-get remove -y '^dotnet-.*'
+          sudo apt-get remove -y '^llvm-.*'
+          sudo apt-get remove -y 'php.*'
+          sudo apt-get remove -y azure-cli google-cloud-sdk hhvm google-chrome-stable firefox powershell mono-devel
+
+          sudo apt-get autoremove -y >/dev/null 2>&1
+          sudo apt-get clean
+          sudo apt-get autoremove -y >/dev/null 2>&1
+          sudo apt-get autoclean -y >/dev/null 2>&1
+
+          #echo "https://github.com/actions/virtual-environments/issues/709"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          echo "remove big /usr/local"
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/local/lib/android >/dev/null 2>&1
+          sudo rm -rf /usr/share/dotnet/sdk > /dev/null 2>&1
+          sudo rm -rf /usr/share/dotnet/shared > /dev/null 2>&1
+          sudo rm -rf /usr/share/swift > /dev/null 2>&1
+
+          sudo apt-get -qq update
+          sudo apt-get install libncurses-dev gawk flex bison openssl libssl-dev dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf git wget
+          sudo apt-get -qq autoremove --purge
+          sudo apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+
+      - name: Setup env and build
+        run: |
+            sudo mkdir /rtlinux && sudo chmod 777 /rtlinux && cd /rtlinux
+            wget https://mirrors.edge.kernel.org/pub/linux/kernel/v5.x/linux-5.10.21.tar.xz
+            wget https://cdn.kernel.org/pub/linux/kernel/projects/rt/5.10/patch-5.10.21-rt34.patch.gz
+            git clone https://github.com/wbrn/rtlinux-deb
+            tar xf linux-5.10.21.tar.xz
+            cd linux-5.10.21 && xzcat ../patch-5.10.21-rt34.patch.gz | patch -p1
+            cp ../rtlinux-deb/configs/popos.config .config
+            make -j8 deb-pkg
+
+      - name: Pack
+        run: |
+          cd /rtlinux
+          mkdir debpkg && cp -a *.deb debpkg
+          tar Jcf debpkg.tar.xz debpkg
+          echo "PACKAGE=/rtlinux/debpkg.tar.xz" >> $GITHUB_ENV
+
+      - name: Upload package
+        uses: actions/upload-artifact@master
+        with:
+          name: rtlinux deb
+          path: ${{env.PACKAGE}}
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          echo "::set-output name=release_tag::$(date +"%Y.%m.%d")"
+          touch release.txt
+          echo "* rtlinux-deb for posos 20.04" >> release.txt
+          echo "::set-output name=status::success"
+
+      - name: Upload package to release
+        id: release
+        uses: softprops/action-gh-release@v1
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        with:
+          tag_name: ${{steps.tag.outputs.release_tag}}
+          body_path: release.txt
+          files: ${{env.PACKAGE}}
+          
+      - name: Remove old Releases
+        uses: dev-drprasad/delete-older-releases@v0.1.0
+        with:
+          keep_latest: 3
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
