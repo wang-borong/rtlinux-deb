@@ -68,14 +68,14 @@ jobs:
 
       - name: Setup env and build
         run: |
-            sudo mkdir /rtlinux && sudo chmod 777 /rtlinux && cd /rtlinux
-            wget https://mirrors.edge.kernel.org/pub/linux/kernel/v5.x/linux-5.10.21.tar.xz
-            wget https://cdn.kernel.org/pub/linux/kernel/projects/rt/5.10/patch-5.10.21-rt34.patch.gz
-            git clone https://github.com/wbrn/rtlinux-deb
-            tar xf linux-5.10.21.tar.xz
-            cd linux-5.10.21 && xzcat ../patch-5.10.21-rt34.patch.gz | patch -p1
-            cp ../rtlinux-deb/configs/popos.config .config
-            make -j8 deb-pkg
+          sudo mkdir /rtlinux && sudo chmod 777 /rtlinux && cd /rtlinux
+          wget https://mirrors.edge.kernel.org/pub/linux/kernel/v5.x/linux-5.10.21.tar.xz
+          wget https://cdn.kernel.org/pub/linux/kernel/projects/rt/5.10/patch-5.10.21-rt34.patch.gz
+          git clone https://github.com/wbrn/rtlinux-deb
+          tar xf linux-5.10.21.tar.xz
+          cd linux-5.10.21 && xzcat ../patch-5.10.21-rt34.patch.gz | patch -p1
+          cp ../rtlinux-deb/configs/popos.config .config
+          make -j8 deb-pkg
 
       - name: Pack
         run: |
